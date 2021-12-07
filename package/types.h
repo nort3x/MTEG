@@ -1,12 +1,10 @@
 //
-// Created by human on 12/4/21.
+// Created by human on 12/7/21.
 //
 
-#ifndef CLIENT_SERVER_H
-#define CLIENT_SERVER_H
-
-#define FROM_SERVER -1
-
+#ifndef CLIENT_TYPES_H
+#define CLIENT_TYPES_H
+#include "pthread.h"
 typedef struct {
     int from_player;
     int code;
@@ -43,5 +41,14 @@ enum code{
     POSITION_UPDATE
 };
 
-char *magic_cl = "Yes I Am Your Client!";
-#endif //CLIENT_SERVER_H
+typedef struct {
+
+    int player_number;
+    int sock;
+    int is_active;
+    pthread_mutex_t  pthreadMutex;
+
+} Player;
+
+//char *magic_cl = "Yes I Am Your Client!";
+#endif //CLIENT_TYPES_H
