@@ -19,7 +19,6 @@ PlayerStat * remove_player_stat_from_list(int index, PlayerStat *ptr, int size_o
     return realloc((void *) ptr, sizeof(PlayerStat) * (size_of_list - 1));
 }
 
-// by hadi
 Player* add_player_to_list(Player to_be_add, Player *ptr, int size_of_list){
     Player* new_list =  realloc((void *) ptr, sizeof(Player) * (size_of_list + 1));
     new_list[size_of_list] = to_be_add;

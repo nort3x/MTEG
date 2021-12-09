@@ -5,6 +5,8 @@
 #ifndef CLIENT_TYPES_H
 #define CLIENT_TYPES_H
 #include "pthread.h"
+#define FROM_SERVER -1
+#define GRID_SIZE 640
 typedef struct {
     int from_player;
     int code;
@@ -24,7 +26,6 @@ typedef struct {
 
 typedef struct {
     int number_of_active_players;
-    int total_number_of_players;
     int current_level;
     int current_score;
 } GameData;
@@ -38,7 +39,8 @@ enum code{
     MOVE_FORWARD,
     MOVE_BACKWARD,
 
-    POSITION_UPDATE
+    SCORE_UPDATE,
+    LEVEL_UPDATE
 };
 
 typedef struct {
@@ -46,9 +48,8 @@ typedef struct {
     int player_number;
     int sock;
     int is_active;
-    pthread_mutex_t  pthreadMutex;
+    pthread_mutex_t  recv_thread;
 
 } Player;
-
-//char *magic_cl = "Yes I Am Your Client!";
+extern const char* magic_cl;
 #endif //CLIENT_TYPES_H
