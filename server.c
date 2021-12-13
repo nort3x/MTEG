@@ -10,11 +10,14 @@
 #include "package/types.h"
 #include "package/shared.h"
 #include "server.h"
+#include "package/render.h"
 
 // will allocate and extract basic information for runtime
 inline void init(int argc, char const *argv[]);
 
 inline void cleanup();
+
+inline void init_grid();
 
 // main routine which consist of accepting clients and managing them
 // it will be given to main thread
@@ -33,12 +36,14 @@ int main(int argc, char const *argv[]) {
 GameData *gd = NULL;
 ServerInternals *sv = NULL;
 Locks *locks = NULL;
+TILETYPE ** grid = NULL;
 
 void init(int argc, char const *argv[]) {
     gd = malloc(sizeof(GameData));
     gd->current_level = 1;
     gd->current_score = 0;
     gd->number_of_active_players = 0;
+    init_grid();
 
     sv = malloc(sizeof(ServerInternals));
     sv->players = calloc(gd->number_of_active_players, sizeof(Player));
@@ -57,6 +62,7 @@ void cleanup() {
     free(sv->players);
     free(gd);
     free(locks);
+    free(grid);
 }
 
 
@@ -146,6 +152,7 @@ inline void register_receiver_thread_for_player(Player *p);
 inline void make_state_for_player(Player *p);
 
 inline int send_stats(Player *p);
+inline int send_grid(Player* p);
 
 inline void remove_player(Player *p);
 
@@ -168,9 +175,13 @@ void accept_player(int socket) {
 
     if (success)
         success &= send_stats(pp);
+//    if(success)
+//        success &= send_grid(pp);
 
-    if (success)
+    if (success) {
+        pp->is_active = 1;
         register_receiver_thread_for_player(pp);
+    }
     else
         remove_player(pp);
 
@@ -223,7 +234,7 @@ void remove_player(Player *p) {
 }
 
 int send_game_data(Player *p) {
-    int i = send(p->sock, gd, sizeof(GameData), 0);
+    long int i = send(p->sock, gd, sizeof(GameData), 0);
     return i == sizeof(GameData) ? 1 : 0;
 }
 
@@ -250,7 +261,7 @@ Position random_position() {
 
 void make_state_for_player(Player *p) {
     PlayerStat ps = {random_position(), p->player_number, 1};
-    sv->stat = add_player_stat_to_list(ps, sv->stat, gd->number_of_active_players);
+    sv->stat = add_player_stat_to_list(ps, sv->stat, gd->number_of_active_players-1);
 }
 
 int send_stats(Player *p) {
@@ -258,6 +269,13 @@ int send_stats(Player *p) {
     return send(p->sock, sv->stat, size_stat, 0)
            == size_stat ? 1 : 0;
 }
+
+int send_grid(Player* p){
+    size_t size_grid = sizeof(TILETYPE)*GRIDSIZE*GRIDSIZE;
+    return send(p->sock, grid, size_grid, 0)
+           == size_grid ? 1 : 0;
+}
+
 
 /*-------------game logics--------------*/
 inline void handle_message(Player *p, Message m);
@@ -347,3 +365,42 @@ void player_removed(Player *p){
     pthread_mutex_unlock(&locks->game_data);
 
 }
+
+// get a random value in the range [0, 1]
+double rand01()
+{
+    return (double) rand() / (double) RAND_MAX;
+}
+
+void init_grid()
+{
+    if(grid==NULL){
+        grid = calloc(GRIDSIZE, sizeof(TILETYPE*));
+        for (int i = 0; i < GRIDSIZE; ++i) {
+            grid[i] = calloc(GRIDSIZE, sizeof(TILETYPE));
+        }
+    }
+
+    for (int i = 0; i < GRIDSIZE; i++) {
+        for (int j = 0; j < GRIDSIZE; j++) {
+            double r = rand01();
+            if (r < 0.1) {
+                grid[i][j] = TILE_TOMATO;
+                gd->number_of_tomatoes++;
+            }
+            else
+                grid[i][j] = TILE_GRASS;
+        }
+    }
+
+    // force player's position to be grass
+//    if (gd->grid[playerPosition.x][playerPosition.y] == TILE_TOMATO) {
+//        grid[playerPosition.x][playerPosition.y] = TILE_GRASS;
+//        numTomatoes--;
+//    }
+
+    // ensure grid isn't empty
+    while (gd->number_of_tomatoes == 0)
+        init_grid();
+}
+

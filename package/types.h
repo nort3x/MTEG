@@ -5,8 +5,16 @@
 #ifndef CLIENT_TYPES_H
 #define CLIENT_TYPES_H
 #include "pthread.h"
+
 #define FROM_SERVER -1
 #define GRID_SIZE 640
+
+typedef enum
+{
+    TILE_GRASS,
+    TILE_TOMATO
+} TILETYPE;
+
 typedef struct {
     int from_player;
     int code;
@@ -28,6 +36,7 @@ typedef struct {
     int number_of_active_players;
     int current_level;
     int current_score;
+    int number_of_tomatoes;
 } GameData;
 
 enum code{

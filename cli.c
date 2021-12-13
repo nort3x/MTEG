@@ -6,6 +6,7 @@
 #include <stdlib.h>
 #include "package/shared.h"
 #include "package/types.h"
+#include "package/render.h"
 
 
 typedef struct {
@@ -13,6 +14,7 @@ typedef struct {
     int my_id;
     GameData gd;
     PlayerStat *stats;
+    RenderData* rd;
 } ClientData;
 
 inline void connection_job(int, char const *[]);
@@ -23,17 +25,22 @@ inline void cleanup();
 
 inline void do_initialize_client();
 
+
+inline void render_game();
+
 ClientData *cd;
 
 int main(int argc, char const *argv[]) {
     init();
     connection_job(argc, argv);
+//    render_game();
     cleanup();
     return 0;
 }
 
 void init() {
     cd = malloc(sizeof(ClientData));
+    cd->rd = malloc(sizeof(RenderData));
 }
 
 void cleanup() {
@@ -80,11 +87,20 @@ inline void recv_player_stats();
 
 inline void post_init();
 
+inline void recv_grid();
+
+inline void make_render_data();
+
 void do_initialize_client() {
     recv_game_data();
     recv_self_id();
     post_init();
     recv_player_stats();
+//    recv_grid();
+
+//    make_render_data();
+
+
     printf("my_id: %d \n",cd->my_id);
     printf("game_data: { #ofPlayers:%d  current_score:%d current_level:%d } \n",
            cd->gd.number_of_active_players,
@@ -139,4 +155,28 @@ void recv_player_stats() {
         printf("could not receive player stats");
         exit(-1);
     }
+}
+void recv_grid(){
+    long int i = recv(
+            cd->server_sock,
+            cd->rd->grid,
+            sizeof(TILETYPE) * GRIDSIZE * GRIDSIZE,
+            0
+    );
+    if(i != sizeof(TILETYPE) * GRIDSIZE * GRIDSIZE){
+        printf("could not receive grid");
+        exit(-1);
+    }
+}
+
+void render_game(){
+    render(cd->rd);
+}
+
+void make_render_data(){
+    cd->rd->level = cd->gd.current_level;
+    cd->rd->score = cd->gd.current_score;
+    cd->rd->numTomatoes = cd->gd.number_of_tomatoes;
+    cd->rd->other_player = cd->stats;
+    cd->rd->thisPlayer = cd->stats[cd->my_id].p;
 }
