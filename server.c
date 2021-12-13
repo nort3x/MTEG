@@ -36,7 +36,7 @@ int main(int argc, char const *argv[]) {
 GameData *gd = NULL;
 ServerInternals *sv = NULL;
 Locks *locks = NULL;
-TILETYPE ** grid = NULL;
+TILETYPE (*grid)[GRIDSIZE] = NULL;
 
 void init(int argc, char const *argv[]) {
     gd = malloc(sizeof(GameData));
@@ -152,6 +152,7 @@ inline void register_receiver_thread_for_player(Player *p);
 inline void make_state_for_player(Player *p);
 
 inline int send_stats(Player *p);
+
 inline int send_grid(Player* p);
 
 inline void remove_player(Player *p);
@@ -175,8 +176,9 @@ void accept_player(int socket) {
 
     if (success)
         success &= send_stats(pp);
-//    if(success)
-//        success &= send_grid(pp);
+
+    if(success)
+        success &= send_grid(pp);
 
     if (success) {
         pp->is_active = 1;
@@ -234,13 +236,13 @@ void remove_player(Player *p) {
 }
 
 int send_game_data(Player *p) {
-    long int i = send(p->sock, gd, sizeof(GameData), 0);
+    int i = send(p->sock, gd, sizeof(GameData), 0);
     return i == sizeof(GameData) ? 1 : 0;
 }
 
 int send_id(Player *p) {
     Message m = {FROM_SERVER, YOUR_ID, p->player_number};
-    return send(p->sock, &m, sizeof(Message), 0) == sizeof(GameData) ? 1 : 0;
+    return send(p->sock, &m, sizeof(Message), 0) == sizeof(Message) ? 1 : 0;
 }
 
 void register_receiver_thread_for_player(Player *p) {
@@ -254,8 +256,8 @@ void register_receiver_thread_for_player(Player *p) {
 
 Position random_position() {
     return (Position) {
-            (int) (drand48() * GRID_SIZE),
-            (int) (drand48() * GRID_SIZE)
+            (int) (drand48() * GRIDSIZE),
+            (int) (drand48() * GRIDSIZE)
     };
 }
 
@@ -375,10 +377,7 @@ double rand01()
 void init_grid()
 {
     if(grid==NULL){
-        grid = calloc(GRIDSIZE, sizeof(TILETYPE*));
-        for (int i = 0; i < GRIDSIZE; ++i) {
-            grid[i] = calloc(GRIDSIZE, sizeof(TILETYPE));
-        }
+        grid = malloc(sizeof(TILETYPE)*GRIDSIZE*GRIDSIZE);
     }
 
     for (int i = 0; i < GRIDSIZE; i++) {
@@ -402,5 +401,7 @@ void init_grid()
     // ensure grid isn't empty
     while (gd->number_of_tomatoes == 0)
         init_grid();
+
+    print_grid(grid);
 }
 

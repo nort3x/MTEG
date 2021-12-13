@@ -19,20 +19,27 @@
 #define GRIDSIZE 10
 
 
+#include <stdbool.h>
 #include "types.h"
 
 
 
 
 typedef struct {
-
-    int score;
-    int level;
-    int numTomatoes;
-    Position thisPlayer;
-    TILETYPE ** grid;
+    GameData  gd;
+    PlayerStat thisPlayer;
+    bool shouldExit;
+    TILETYPE (*grid)[GRIDSIZE];
     PlayerStat* other_player;
-
 } RenderData;
-void render(RenderData *render_data);
+
+typedef struct {
+    void (*move_left)(void);
+    void (*move_right)(void);
+    void (*move_top)(void);
+    void (*move_bottom)(void);
+    void (*end_game)(void);
+}MoveHooks;
+
+void render(RenderData *render_data,MoveHooks moveHooks);
 #endif //CLIENT_RENDER_H

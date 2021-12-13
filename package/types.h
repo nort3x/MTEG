@@ -7,7 +7,20 @@
 #include "pthread.h"
 
 #define FROM_SERVER -1
-#define GRID_SIZE 640
+
+typedef enum{
+    YOUR_ID,
+    PLAYER_DISCONNECTED,
+    PLAYER_JOINED, // todo
+
+    MOVE_LEFT,
+    MOVE_RIGHT,
+    MOVE_FORWARD,
+    MOVE_BACKWARD,
+
+    SCORE_UPDATE,
+    LEVEL_UPDATE
+}  Code;
 
 typedef enum
 {
@@ -17,7 +30,7 @@ typedef enum
 
 typedef struct {
     int from_player;
-    int code;
+    Code code;
     int data;
 } Message;
 
@@ -39,18 +52,7 @@ typedef struct {
     int number_of_tomatoes;
 } GameData;
 
-enum code{
-    YOUR_ID,
-    PLAYER_DISCONNECTED,
 
-    MOVE_LEFT,
-    MOVE_RIGHT,
-    MOVE_FORWARD,
-    MOVE_BACKWARD,
-
-    SCORE_UPDATE,
-    LEVEL_UPDATE
-};
 
 typedef struct {
 
