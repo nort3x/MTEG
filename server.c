@@ -7,10 +7,10 @@
 #include <stdlib.h>
 #include <unistd.h>
 #include <string.h>
-#include "package/types.h"
-#include "package/shared.h"
+#include "types.h"
+#include "shared.h"
 #include "server.h"
-#include "package/render.h"
+#include "render.h"
 
 // will allocate and extract basic information for runtime
 inline void init(int argc, char const *argv[]);
@@ -39,6 +39,12 @@ Locks *locks = NULL;
 TILETYPE (*grid)[GRIDSIZE] = NULL;
 
 void init(int argc, char const *argv[]) {
+    if(argc<2){
+        printf("please enter port number");
+        exit(-1);
+    }
+
+
     gd = malloc(sizeof(GameData));
     gd->current_level = 1;
     gd->current_score = 0;
@@ -47,7 +53,7 @@ void init(int argc, char const *argv[]) {
 
     sv = malloc(sizeof(ServerInternals));
     sv->players = calloc(gd->number_of_active_players, sizeof(Player));
-    sv->sv_port = 8081; //todo read this from argv
+    sv->sv_port = atoi(argv[1]);
     sv->stat = calloc(gd->number_of_active_players, sizeof(PlayerStat));
 
     locks = malloc(sizeof(Locks));
@@ -510,10 +516,13 @@ void init_grid()
     }
 
     // force player's position to be grass
-//    if (gd->grid[playerPosition.x][playerPosition.y] == TILE_TOMATO) {
-//        grid[playerPosition.x][playerPosition.y] = TILE_GRASS;
-//        numTomatoes--;
-//    }
+    for (int i = 0; i < gd->number_of_active_players; ++i) {
+        if (grid[sv->stat[i].p.x][sv->stat[i].p.y] == TILE_TOMATO) {
+            grid[sv->stat[i].p.x][sv->stat[i].p.y] = TILE_GRASS;
+            gd->number_of_tomatoes--;
+        }
+    }
+
 
     // ensure grid isn't empty
     while (gd->number_of_tomatoes == 0)

@@ -1,282 +1,375 @@
+// Client side C/C++ program to demonstrate Socket programming
 #include <stdio.h>
-#include <stdbool.h>
-#include <time.h>
+#include <sys/socket.h>
+#include <arpa/inet.h>
+#include <string.h>
+#include <stdlib.h>
+#include "types.h"
+#include "render.h"
+#include "shared.h"
 
-#include <SDL2/SDL.h>
-#include <SDL2/SDL_image.h>
-#include <SDL2/SDL_ttf.h>
 
-// Dimensions for the drawn grid (should be GRIDSIZE * texture dimensions)
-#define GRID_DRAW_WIDTH 640
-#define GRID_DRAW_HEIGHT 640
+typedef struct {
+    int server_sock;
+    int my_id;
+    GameData gd;
+    PlayerStat *stats;
+    RenderData *rd;
+} ClientData;
 
-#define WINDOW_WIDTH GRID_DRAW_WIDTH
-#define WINDOW_HEIGHT (HEADER_HEIGHT + GRID_DRAW_HEIGHT)
+inline void connection_job(int, char const *[]);
 
-// Header displays current score
-#define HEADER_HEIGHT 50
+inline void init();
 
-// Number of cells vertically/horizontally in the grid
-#define GRIDSIZE 10
+inline void cleanup();
 
-typedef struct
-{
-    int x;
-    int y;
-} Position;
+inline void do_initialize_client();
 
-typedef enum
-{
-    TILE_GRASS,
-    TILE_TOMATO
-} TILETYPE;
+inline void register_listener_thread();
 
-TILETYPE grid[GRIDSIZE][GRIDSIZE];
 
-Position playerPosition;
-int score;
-int level;
-int numTomatoes;
+inline void render_game();
 
-bool shouldExit = false;
+ClientData *cd;
 
-TTF_Font* font;
-
-// get a random value in the range [0, 1]
-double rand01()
-{
-    return (double) rand() / (double) RAND_MAX;
+int main(int argc, char const *argv[]) {
+    init();
+    connection_job(argc, argv);
+    render_game();
+    cleanup();
+    return 0;
 }
 
-void initGrid()
-{
-    for (int i = 0; i < GRIDSIZE; i++) {
-        for (int j = 0; j < GRIDSIZE; j++) {
-            double r = rand01();
-            if (r < 0.1) {
-                grid[i][j] = TILE_TOMATO;
-                numTomatoes++;
-            }
-            else
-                grid[i][j] = TILE_GRASS;
+void init() {
+    cd = malloc(sizeof(ClientData));
+    cd->rd = malloc(sizeof(RenderData));
+    cd->rd->grid = malloc(sizeof(TILETYPE) * GRIDSIZE * GRIDSIZE);
+}
+
+void cleanup() {
+    free(cd->stats);
+    free(cd);
+}
+
+
+void connection_job(int argc, char const *argv[]) {
+
+    if(argc<3){
+        printf("please enter ip and port <ip> <port>");
+        exit(-1);
+    }
+    const char* ip = argv[1];
+    int PORT = atoi(argv[2]); // todo read from argv
+    int sock = 0;
+
+    struct sockaddr_in serv_addr;
+    char buffer[1024] = {0};
+    if ((sock = socket(AF_INET, SOCK_STREAM, 0)) < 0) {
+        printf("\n Socket creation error \n");
+        exit(-1);
+    }
+
+    serv_addr.sin_family = AF_INET;
+    serv_addr.sin_port = htons(PORT);
+
+    // Convert IPv4 and IPv6 addresses from text to binary form
+    if (inet_pton(AF_INET, ip, &serv_addr.sin_addr) <= 0) {
+        printf("\nInvalid address/ Address not supported \n");
+        exit(-1);
+    }
+
+    if (connect(sock, (struct sockaddr *) &serv_addr, sizeof(serv_addr)) < 0) {
+        printf("\nConnection Failed \n");
+        exit(-1);
+    }
+    send(sock, magic_cl, strlen(magic_cl), 0);
+    printf("magic message sent and client is now connected\n");
+    cd->server_sock = sock;
+    do_initialize_client();
+    register_listener_thread();
+}
+
+inline void recv_game_data();
+
+inline void recv_self_id();
+
+inline void recv_player_stats();
+
+inline void post_init();
+
+inline void recv_grid();
+
+inline void make_render_data();
+
+inline void process_message(Message m);
+
+void do_initialize_client() {
+    recv_game_data();
+    recv_self_id();
+    post_init();
+    recv_player_stats();
+    recv_grid();
+
+    make_render_data();
+
+
+    printf("my_id: %d \n", cd->my_id);
+
+
+    printf("Players stats: \n");
+    for (int i = 0; i < cd->gd.number_of_active_players; ++i) {
+        printf("Player %d : stats:{ id:%d, Position:{%d,%d} is_active:%d}\n",
+               i,
+               cd->stats[i].id,
+               cd->stats[i].p.x,
+               cd->stats[i].p.y,
+               cd->stats[i].is_active
+        );
+    }
+
+}
+
+void recv_game_data() {
+    int i = recv(cd->server_sock, &cd->gd, sizeof(GameData), 0);
+    if (i != sizeof(GameData)) {
+        printf("GameData Not Received");
+        exit(-1);
+    } else {
+        printf("game_data: { #ofPlayers:%d  current_score:%d current_level:%d } \n",
+               cd->gd.number_of_active_players,
+               cd->gd.current_score,
+               cd->gd.current_level
+        );
+    }
+}
+
+void recv_self_id() {
+    Message m;
+    int i = recv(cd->server_sock, &m, sizeof(Message), 0);
+    if (i != sizeof(Message) || m.code != YOUR_ID || m.from_player != FROM_SERVER) {
+        printf("received a message from server (or not ?) which is not my id, will terminate");
+        exit(-1);
+    }
+    cd->my_id = m.data;
+}
+
+
+void post_init() {
+    cd->stats = calloc(cd->gd.number_of_active_players, sizeof(PlayerStat));
+}
+
+void recv_player_stats() {
+    long int i = recv(
+            cd->server_sock,
+            cd->stats,
+            sizeof(PlayerStat) * cd->gd.number_of_active_players,
+            0
+    );
+    if (i != sizeof(PlayerStat) * cd->gd.number_of_active_players) {
+        printf("could not receive player stats");
+        exit(-1);
+    }
+}
+
+void recv_grid() {
+    long int i = recv(
+            cd->server_sock,
+            (cd->rd->grid),
+            sizeof(TILETYPE) * GRIDSIZE * GRIDSIZE,
+            0
+    );
+    if (i != sizeof(TILETYPE) * GRIDSIZE * GRIDSIZE) {
+        printf("could not receive grid");
+        exit(-1);
+    } else {
+        print_grid(cd->rd->grid);
+
+    }
+}
+
+/*render and hooks*/
+
+inline void move_left();
+
+inline void move_right();
+
+inline void move_top();
+
+inline void move_bottom();
+
+
+void render_game() {
+    render(
+            cd->rd,
+            (MoveHooks) {move_left, move_right, move_top, move_bottom}
+    );
+}
+
+void make_render_data() {
+    cd->rd->gd = cd->gd;
+    cd->rd->other_player = cd->stats;
+    cd->rd->thisPlayer = cd->my_id;
+}
+
+void client_send_message(Code c,int data){
+    Message m = {cd->my_id,c,data};
+    if(send(cd->server_sock,&m, sizeof(Message),0) != sizeof(Message)){
+        printf("sending message failed!\n");
+    }else{
+        printf("message sent: from:%d code:%d data:%d\n",m.from_player,m.code,m.data);
+    }
+}
+
+void move_left(){
+    client_send_message(MOVE_LEFT,0);
+}
+void move_right(){
+    client_send_message(MOVE_RIGHT,0);
+}
+void move_top(){
+    client_send_message(MOVE_FORWARD,0);
+}
+void move_bottom(){
+    client_send_message(MOVE_BACKWARD,0);
+}
+
+
+void* listener_thread_job(void* arg){
+    Message  m;
+    while (cd->my_id != -1){
+        if(recv(cd->server_sock,&m, sizeof(Message),0) != sizeof(Message)){
+            printf("Connection Lost\n");
+            break;
+        }
+        process_message(m);
+    }
+    printf("trigger shouldExit for renderer\n");
+    cd->rd->shouldExit = true;
+    return NULL;
+}
+
+pthread_t pthread;
+void register_listener_thread(){
+    pthread_create(
+            &pthread,
+            NULL,
+            listener_thread_job,
+            NULL
+            );
+}
+
+inline void move_player(Message m);
+inline void remove_player(Message m);
+inline void update_game_data(Message m);
+inline void player_joined(Message m);
+
+
+void process_message(Message m){
+    switch (m.code) {
+        case MOVE_BACKWARD:
+        case MOVE_FORWARD:
+        case MOVE_RIGHT:
+        case MOVE_LEFT:
+            move_player(m);
+            break;
+        case PLAYER_DISCONNECTED:
+            remove_player(m);
+            break;
+        case LEVEL_UPDATE:
+        case SCORE_UPDATE:
+            update_game_data(m);
+            break;
+        case YOUR_ID:
+            printf("should not receive this in this stage\n");
+            break;
+
+        case GRID_UPDATE:
+            recv_grid();
+            break;
+
+        case PLAYER_JOINED:
+            player_joined(m);
+            break;
+    }
+}
+
+int get_index_of_player_stat(int id) {
+    int p_pos = -1;
+    for (int i = 0; i < cd->gd.number_of_active_players; ++i) {
+        if (cd->stats[i].id == id) {
+            p_pos = i;
+            break;
         }
     }
-
-    // force player's position to be grass
-    if (grid[playerPosition.x][playerPosition.y] == TILE_TOMATO) {
-        grid[playerPosition.x][playerPosition.y] = TILE_GRASS;
-        numTomatoes--;
-    }
-
-    // ensure grid isn't empty
-    while (numTomatoes == 0)
-        initGrid();
+    return p_pos;
 }
 
-void initSDL()
-{
-    if (SDL_Init(SDL_INIT_VIDEO) < 0) {
-        fprintf(stderr, "Error initializing SDL: %s\n", SDL_GetError());
-        exit(EXIT_FAILURE);
+PlayerStat * get_objective(int id){
+    int index = get_index_of_player_stat(id);
+    if(index == -1){
+        printf("player stat not found\n");
+        return NULL;
     }
-
-    int rv = IMG_Init(IMG_INIT_PNG);
-    if ((rv & IMG_INIT_PNG) != IMG_INIT_PNG) {
-        fprintf(stderr, "Error initializing IMG: %s\n", IMG_GetError());
-        exit(EXIT_FAILURE);
-    }
-
-    if (TTF_Init() == -1) {
-        fprintf(stderr, "Error initializing TTF: %s\n", TTF_GetError());
-        exit(EXIT_FAILURE);
-    }
+    return &cd->stats[index];
 }
 
-void moveTo(int x, int y)
-{
-    // Prevent falling off the grid
-    if (x < 0 || x >= GRIDSIZE || y < 0 || y >= GRIDSIZE)
-        return;
+void move_player(Message m){
+    PlayerStat * objective_player = get_objective(m.from_player);
+    if(objective_player==NULL) return;
 
-    // Sanity check: player can only move to 4 adjacent squares
-    if (!(abs(playerPosition.x - x) == 1 && abs(playerPosition.y - y) == 0) &&
-        !(abs(playerPosition.x - x) == 0 && abs(playerPosition.y - y) == 1)) {
-        fprintf(stderr, "Invalid move attempted from (%d, %d) to (%d, %d)\n", playerPosition.x, playerPosition.y, x, y);
+    switch (m.code) {
+        case MOVE_LEFT:
+            objective_player->p.x--;break;
+        case MOVE_RIGHT:
+            objective_player->p.x++;break;
+        case MOVE_FORWARD:
+            objective_player->p.y--;break;
+        case MOVE_BACKWARD:
+            objective_player->p.y++;break;
+        default:
+            printf("why i'm receiving this message?! it's not a movement message!");
+    }
+
+    if (cd->rd->grid[objective_player->p.x][objective_player->p.y] == TILE_TOMATO) {
+        cd->rd->grid[objective_player->p.x][objective_player->p.y] = TILE_GRASS;
+    }
+
+
+}
+void remove_player(Message m){
+    int id = get_index_of_player_stat(m.data);
+    if(id==-1){
+        printf("id not found\n");
         return;
     }
-
-    playerPosition.x = x;
-    playerPosition.y = y;
-
-    if (grid[x][y] == TILE_TOMATO) {
-        grid[x][y] = TILE_GRASS;
-        score++;
-        numTomatoes--;
-        if (numTomatoes == 0) {
-            level++;
-            initGrid();
-        }
-    }
+    cd->stats = remove_player_stat_from_list(id,cd->stats,cd->gd.number_of_active_players);
+    cd->gd.number_of_active_players--;
+    make_render_data();
 }
 
-void handleKeyDown(SDL_KeyboardEvent* event)
-{
-    // ignore repeat events if key is held down
-    if (event->repeat)
-        return;
+void update_game_data(Message m){
+    switch (m.code) {
+        case SCORE_UPDATE:
+            cd->gd.current_score = m.data;
+            break;
+        case LEVEL_UPDATE:
+            cd->gd.current_level = m.data;
+            break;
 
-    if (event->keysym.scancode == SDL_SCANCODE_Q || event->keysym.scancode == SDL_SCANCODE_ESCAPE)
-        shouldExit = true;
-
-    if (event->keysym.scancode == SDL_SCANCODE_UP || event->keysym.scancode == SDL_SCANCODE_W)
-        moveTo(playerPosition.x, playerPosition.y - 1);
-
-    if (event->keysym.scancode == SDL_SCANCODE_DOWN || event->keysym.scancode == SDL_SCANCODE_S)
-        moveTo(playerPosition.x, playerPosition.y + 1);
-
-    if (event->keysym.scancode == SDL_SCANCODE_LEFT || event->keysym.scancode == SDL_SCANCODE_A)
-        moveTo(playerPosition.x - 1, playerPosition.y);
-
-    if (event->keysym.scancode == SDL_SCANCODE_RIGHT || event->keysym.scancode == SDL_SCANCODE_D)
-        moveTo(playerPosition.x + 1, playerPosition.y);
+        default:
+            printf("not an update message why i'm receiving it ?\n");
+    }
+    make_render_data();
 }
 
-void processInputs()
-{
-	SDL_Event event;
 
-	while (SDL_PollEvent(&event)) {
-		switch (event.type) {
-			case SDL_QUIT:
-				shouldExit = true;
-				break;
-
-            case SDL_KEYDOWN:
-                handleKeyDown(&event.key);
-				break;
-
-			default:
-				break;
-		}
-	}
-}
-
-void drawGrid(SDL_Renderer* renderer, SDL_Texture* grassTexture, SDL_Texture* tomatoTexture, SDL_Texture* playerTexture)
-{
-    SDL_Rect dest;
-    for (int i = 0; i < GRIDSIZE; i++) {
-        for (int j = 0; j < GRIDSIZE; j++) {
-            dest.x = 64 * i;
-            dest.y = 64 * j + HEADER_HEIGHT;
-            SDL_Texture* texture = (grid[i][j] == TILE_GRASS) ? grassTexture : tomatoTexture;
-            SDL_QueryTexture(texture, NULL, NULL, &dest.w, &dest.h);
-            SDL_RenderCopy(renderer, texture, NULL, &dest);
-        }
+void player_joined(Message m){
+    PlayerStat  ps;
+    if(recv(cd->server_sock,&ps, sizeof(PlayerStat),0) != sizeof(PlayerStat)){
+        printf("new player added but no stats received");
+        exit(-1);
     }
-
-    dest.x = 64 * playerPosition.x;
-    dest.y = 64 * playerPosition.y + HEADER_HEIGHT;
-    SDL_QueryTexture(playerTexture, NULL, NULL, &dest.w, &dest.h);
-    SDL_RenderCopy(renderer, playerTexture, NULL, &dest);
-}
-
-void drawUI(SDL_Renderer* renderer)
-{
-    // largest score/level supported is 2147483647
-    char scoreStr[18];
-    char levelStr[18];
-    sprintf(scoreStr, "Score: %d", score);
-    sprintf(levelStr, "Level: %d", level);
-
-    SDL_Color white = {255, 255, 255};
-    SDL_Surface* scoreSurface = TTF_RenderText_Solid(font, scoreStr, white);
-    SDL_Texture* scoreTexture = SDL_CreateTextureFromSurface(renderer, scoreSurface);
-
-    SDL_Surface* levelSurface = TTF_RenderText_Solid(font, levelStr, white);
-    SDL_Texture* levelTexture = SDL_CreateTextureFromSurface(renderer, levelSurface);
-
-    SDL_Rect scoreDest;
-    TTF_SizeText(font, scoreStr, &scoreDest.w, &scoreDest.h);
-    scoreDest.x = 0;
-    scoreDest.y = 0;
-
-    SDL_Rect levelDest;
-    TTF_SizeText(font, levelStr, &levelDest.w, &levelDest.h);
-    levelDest.x = GRID_DRAW_WIDTH - levelDest.w;
-    levelDest.y = 0;
-
-    SDL_RenderCopy(renderer, scoreTexture, NULL, &scoreDest);
-    SDL_RenderCopy(renderer, levelTexture, NULL, &levelDest);
-
-    SDL_FreeSurface(scoreSurface);
-    SDL_DestroyTexture(scoreTexture);
-
-    SDL_FreeSurface(levelSurface);
-    SDL_DestroyTexture(levelTexture);
-}
-
-int main(int argc, char* argv[])
-{
-    srand(time(NULL));
-
-    level = 1;
-
-    initSDL();
-
-    font = TTF_OpenFont("resources/Burbank-Big-Condensed-Bold-Font.otf", HEADER_HEIGHT);
-    if (font == NULL) {
-        fprintf(stderr, "Error loading font: %s\n", TTF_GetError());
-        exit(EXIT_FAILURE);
-    }
-
-    playerPosition.x = playerPosition.y = GRIDSIZE / 2;
-    initGrid();
-
-    SDL_Window* window = SDL_CreateWindow("Client", SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED, WINDOW_WIDTH, WINDOW_HEIGHT, 0);
-
-    if (window == NULL) {
-        fprintf(stderr, "Error creating app window: %s\n", SDL_GetError());
-        exit(EXIT_FAILURE);
-    }
-
-    SDL_Renderer* renderer = SDL_CreateRenderer(window, -1, 0);
-
-	if (renderer == NULL)
-	{
-		fprintf(stderr, "Error creating renderer: %s\n", SDL_GetError());
-        exit(EXIT_FAILURE);
-	}
-
-    SDL_Texture *grassTexture = IMG_LoadTexture(renderer, "resources/grass.png");
-    SDL_Texture *tomatoTexture = IMG_LoadTexture(renderer, "resources/tomato.png");
-    SDL_Texture *playerTexture = IMG_LoadTexture(renderer, "resources/player.png");
-
-    // main game loop
-    while (!shouldExit) {
-        SDL_SetRenderDrawColor(renderer, 0, 105, 6, 255);
-        SDL_RenderClear(renderer);
-
-        processInputs();
-
-        drawGrid(renderer, grassTexture, tomatoTexture, playerTexture);
-        drawUI(renderer);
-
-        SDL_RenderPresent(renderer);
-
-        SDL_Delay(16); // 16 ms delay to limit display to 60 fps
-    }
-
-    // clean up everything
-    SDL_DestroyTexture(grassTexture);
-    SDL_DestroyTexture(tomatoTexture);
-    SDL_DestroyTexture(playerTexture);
-
-    TTF_CloseFont(font);
-    TTF_Quit();
-
-    IMG_Quit();
-
-    SDL_DestroyRenderer(renderer);
-    SDL_DestroyWindow(window);
-    SDL_Quit();
+    cd->stats = add_player_stat_to_list(ps,cd->stats,cd->gd.number_of_active_players);
+    cd->gd.number_of_active_players++;
+    make_render_data();
 }

@@ -196,7 +196,7 @@ void render(RenderData *render_data, MoveHooks moveHooks) {
 
     initSDL();
 
-    font = TTF_OpenFont("../resources/Burbank-Big-Condensed-Bold-Font.otf", HEADER_HEIGHT);
+    font = TTF_OpenFont("resources/Burbank-Big-Condensed-Bold-Font.otf", HEADER_HEIGHT);
     if (font == NULL) {
         fprintf(stderr, "Error loading font: %s\n", TTF_GetError());
         exit(EXIT_FAILURE);
@@ -220,9 +220,9 @@ void render(RenderData *render_data, MoveHooks moveHooks) {
         exit(EXIT_FAILURE);
     }
 
-    SDL_Texture *grassTexture = IMG_LoadTexture(renderer, "../resources/grass.png");
-    SDL_Texture *tomatoTexture = IMG_LoadTexture(renderer, "../resources/tomato.png");
-    SDL_Texture *playerTexture = IMG_LoadTexture(renderer, "../resources/player.png");
+    SDL_Texture *grassTexture = IMG_LoadTexture(renderer, "resources/grass.png");
+    SDL_Texture *tomatoTexture = IMG_LoadTexture(renderer, "resources/tomato.png");
+    SDL_Texture *playerTexture = IMG_LoadTexture(renderer, "resources/player.png");
 
     // main game loop
     while (!rd->shouldExit) {
