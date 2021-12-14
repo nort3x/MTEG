@@ -27,7 +27,7 @@
 
 typedef struct {
     GameData  gd;
-    PlayerStat thisPlayer;
+    int thisPlayer;
     bool shouldExit;
     TILETYPE (*grid)[GRIDSIZE];
     PlayerStat* other_player;

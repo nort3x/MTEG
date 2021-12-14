@@ -203,7 +203,7 @@ void render_game() {
 void make_render_data() {
     cd->rd->gd = cd->gd;
     cd->rd->other_player = cd->stats;
-    cd->rd->thisPlayer = cd->stats[cd->my_id];
+    cd->rd->thisPlayer = cd->my_id;
 }
 
 void client_send_message(Code c,int data){
@@ -229,9 +229,7 @@ void move_bottom(){
 }
 
 
-
-void register_listener_thread(){
-
+void* listener_thread_job(void* arg){
     Message  m;
     while (cd->my_id != -1){
         if(recv(cd->server_sock,&m, sizeof(Message),0) != sizeof(Message)){
@@ -242,11 +240,23 @@ void register_listener_thread(){
     }
     printf("trigger shouldExit for renderer\n");
     cd->rd->shouldExit = true;
+    return NULL;
+}
+
+pthread_t pthread;
+void register_listener_thread(){
+    pthread_create(
+            &pthread,
+            NULL,
+            listener_thread_job,
+            NULL
+            );
 }
 
 inline void move_player(Message m);
 inline void remove_player(Message m);
 inline void update_game_data(Message m);
+inline void player_joined(Message m);
 
 
 void process_message(Message m){
@@ -266,6 +276,14 @@ void process_message(Message m){
             break;
         case YOUR_ID:
             printf("should not receive this in this stage\n");
+            break;
+
+        case GRID_UPDATE:
+            recv_grid();
+            break;
+
+        case PLAYER_JOINED:
+            player_joined(m);
             break;
     }
 }
@@ -296,15 +314,19 @@ void move_player(Message m){
 
     switch (m.code) {
         case MOVE_LEFT:
-            objective_player->p.x++;break;
-        case MOVE_RIGHT:
             objective_player->p.x--;break;
+        case MOVE_RIGHT:
+            objective_player->p.x++;break;
         case MOVE_FORWARD:
-            objective_player->p.y++;break;
-        case MOVE_BACKWARD:
             objective_player->p.y--;break;
+        case MOVE_BACKWARD:
+            objective_player->p.y++;break;
         default:
             printf("why i'm receiving this message?! it's not a movement message!");
+    }
+
+    if (cd->rd->grid[objective_player->p.x][objective_player->p.y] == TILE_TOMATO) {
+        cd->rd->grid[objective_player->p.x][objective_player->p.y] = TILE_GRASS;
     }
 
 
@@ -332,6 +354,17 @@ void update_game_data(Message m){
         default:
             printf("not an update message why i'm receiving it ?\n");
     }
+    make_render_data();
+}
 
 
+void player_joined(Message m){
+    PlayerStat  ps;
+    if(recv(cd->server_sock,&ps, sizeof(PlayerStat),0) != sizeof(PlayerStat)){
+        printf("new player added but no stats received");
+        exit(-1);
+    }
+    cd->stats = add_player_stat_to_list(ps,cd->stats,cd->gd.number_of_active_players);
+    cd->gd.number_of_active_players++;
+    make_render_data();
 }

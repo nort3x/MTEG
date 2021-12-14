@@ -11,7 +11,8 @@
 typedef enum{
     YOUR_ID,
     PLAYER_DISCONNECTED,
-    PLAYER_JOINED, // todo
+    PLAYER_JOINED,
+    GRID_UPDATE,
 
     MOVE_LEFT,
     MOVE_RIGHT,

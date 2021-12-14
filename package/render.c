@@ -19,6 +19,14 @@ TTF_Font *font;
 RenderData *rd;
 MoveHooks mh;
 
+PlayerStat*  get_this_player(){
+    for (int i = 0; i < rd->gd.number_of_active_players; ++i) {
+        if(rd->other_player[i].id == rd->thisPlayer)
+            return & rd->other_player[i];
+    }
+    return NULL;
+}
+
 void initSDL() {
     if (SDL_Init(SDL_INIT_VIDEO) < 0) {
         fprintf(stderr, "Error initializing SDL: %s\n", SDL_GetError());
@@ -37,21 +45,23 @@ void initSDL() {
     }
 }
 
-void moveTo(int x, int y) {
+void moveTo(int x, int y,void(*hook)(void)) {
     // Prevent falling off the grid
     if (x < 0 || x >= GRIDSIZE || y < 0 || y >= GRIDSIZE)
         return;
 
     // Sanity check: player can only move to 4 adjacent squares
-    if (!(abs(rd->thisPlayer.p.x - x) == 1 && abs(rd->thisPlayer.p.y - y) == 0) &&
-        !(abs(rd->thisPlayer.p.x - x) == 0 && abs(rd->thisPlayer.p.y - y) == 1)) {
-        fprintf(stderr, "Invalid move attempted from (%d, %d) to (%d, %d)\n", rd->thisPlayer.p.x, rd->thisPlayer.p.y, x,
+    if (!(abs((*get_this_player()).p.x - x) == 1 && abs((*get_this_player()).p.y - y) == 0) &&
+        !(abs((*get_this_player()).p.x - x) == 0 && abs((*get_this_player()).p.y - y) == 1)) {
+        fprintf(stderr, "Invalid move attempted from (%d, %d) to (%d, %d)\n", (*get_this_player()).p.x, (*get_this_player()).p.y, x,
                 y);
         return;
     }
 
-    rd->thisPlayer.p.x = x;
-    rd->thisPlayer.p.y = y;
+    (*get_this_player()).p.x = x;
+    (*get_this_player()).p.y = y;
+
+    hook();
 
     if (rd->grid[x][y] == TILE_TOMATO) {
         rd->grid[x][y] = TILE_GRASS;
@@ -73,23 +83,19 @@ void handleKeyDown(SDL_KeyboardEvent *event) {
         mh.end_game();
 
     if (event->keysym.scancode == SDL_SCANCODE_UP || event->keysym.scancode == SDL_SCANCODE_W) {
-        mh.move_top();
-        moveTo(rd->thisPlayer.p.x, rd->thisPlayer.p.y - 1);
+        moveTo((*get_this_player()).p.x, (*get_this_player()).p.y - 1,mh.move_top);
     }
 
     if (event->keysym.scancode == SDL_SCANCODE_DOWN || event->keysym.scancode == SDL_SCANCODE_S) {
-        mh.move_bottom();
-        moveTo(rd->thisPlayer.p.x, rd->thisPlayer.p.y + 1);
+        moveTo((*get_this_player()).p.x, (*get_this_player()).p.y + 1,mh.move_bottom);
     }
 
     if (event->keysym.scancode == SDL_SCANCODE_LEFT || event->keysym.scancode == SDL_SCANCODE_A) {
-        mh.move_left();
-        moveTo(rd->thisPlayer.p.x - 1, rd->thisPlayer.p.y);
+        moveTo((*get_this_player()).p.x - 1, (*get_this_player()).p.y,mh.move_left);
     }
 
     if (event->keysym.scancode == SDL_SCANCODE_RIGHT || event->keysym.scancode == SDL_SCANCODE_D) {
-        mh.move_right();
-        moveTo(rd->thisPlayer.p.x + 1, rd->thisPlayer.p.y);
+        moveTo((*get_this_player()).p.x + 1, (*get_this_player()).p.y,mh.move_right);
     }
 }
 
@@ -127,17 +133,17 @@ void drawGrid(SDL_Renderer *renderer, SDL_Texture *grassTexture, SDL_Texture *to
     }
 
     // draw thisPlayer
-    dest.x = 64 * rd->thisPlayer.p.x;
-    dest.y = 64 * rd->thisPlayer.p.y + HEADER_HEIGHT;
+    dest.x = 64 * (*get_this_player()).p.x;
+    dest.y = 64 * (*get_this_player()).p.y + HEADER_HEIGHT;
     SDL_QueryTexture(playerTexture, NULL, NULL, &dest.w, &dest.h);
     SDL_RenderCopy(renderer, playerTexture, NULL, &dest);
 
     // draw otherPlayers
 
     PlayerStat playerPos;
-    for (int i = 1; i < rd->gd.number_of_active_players; ++i) {
+    for (int i = 0; i < rd->gd.number_of_active_players; ++i) {
         playerPos = rd->other_player[i];
-        if (playerPos.id == rd->thisPlayer.id)
+        if (playerPos.id == (*get_this_player()).id)
             continue;
 
         dest.x = 64 * playerPos.p.x;
@@ -196,7 +202,7 @@ void render(RenderData *render_data, MoveHooks moveHooks) {
         exit(EXIT_FAILURE);
     }
 
-//    rd->thisPlayer.x = rd->thisPlayer.y = GRIDSIZE / 2;
+//    *(get_this_player()).x = *(get_this_player()).y = GRIDSIZE / 2;
 //    initGrid();
 
     SDL_Window *window = SDL_CreateWindow("Client", SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED, WINDOW_WIDTH,
