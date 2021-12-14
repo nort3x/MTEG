@@ -1,6 +1,6 @@
 OUTPUT = client
 CFLAGS = -g -Wall -Wvla -I inc -D_REENTRANT
-LFLAGS =  -lSDL2 -lSDL2_image -lSDL2_ttf -lpthread
+LFLAGS = -L lib -lSDL2 -lSDL2_image -lSDL2_ttf -lpthread
 
 %.o: %.c %.h
 	gcc $(CFLAGS) -c -o $@ $<
